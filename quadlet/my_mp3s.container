@@ -1,0 +1,22 @@
+[Unit]
+Description=my_mp3s.exe — YouTube Music library + audio proxy
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=ghcr.io/winblues/my_mp3s.exe:latest
+PublishPort=127.0.0.1:6969:6969
+PublishPort=127.0.0.1:6970:6970
+Volume=%h/.local/share/my_mp3s.exe:/app/data:Z
+Volume=%h/Music:/music:z
+Environment=DATA_DIR=/app/data
+Environment=MUSIC_DIR=/music
+UserNS=keep-id
+AutoUpdate=registry
+
+[Service]
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

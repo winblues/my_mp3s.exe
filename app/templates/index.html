@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>my_mp3s.exe</title>
+  <link rel="stylesheet" href="https://unpkg.com/98.css">
+  <style>
+    body {
+      background: teal;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 32px 16px;
+      min-height: 100vh;
+      box-sizing: border-box;
+      font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
+    }
+
+    .desktop {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      width: 560px;
+    }
+
+    .window {
+      width: 100%;
+    }
+
+    /* Album list */
+    #album-list {
+      width: 100%;
+      height: 180px;
+      resize: vertical;
+    }
+
+    .album-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 4px;
+      cursor: default;
+    }
+
+    .album-row:hover {
+      background: navy;
+      color: white;
+    }
+
+    .synced-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: lime;
+      flex-shrink: 0;
+    }
+
+    .unsynced-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #aaa;
+      flex-shrink: 0;
+    }
+
+    /* Add album form */
+    .field-row-stacked label {
+      margin-bottom: 2px;
+    }
+
+    .add-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+
+    .add-row .field-group {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .add-row input {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    /* Sync log */
+    #sync-log {
+      width: 100%;
+      height: 120px;
+      background: black;
+      color: #00ff00;
+      font-family: "Lucida Console", monospace;
+      font-size: 11px;
+      padding: 4px;
+      box-sizing: border-box;
+      overflow-y: auto;
+      resize: vertical;
+      border: inset 2px;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .status-bar-field {
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+<div class="desktop">
+
+  <!-- Main window -->
+  <div class="window">
+    <div class="title-bar">
+      <div class="title-bar-text">my_mp3s.exe</div>
+      <div class="title-bar-controls">
+        <button aria-label="Minimize"></button>
+        <button aria-label="Maximize"></button>
+        <button aria-label="Close"></button>
+      </div>
+    </div>
+
+    <div class="window-body">
+
+      <!-- Album list -->
+      <div class="field-row-stacked" style="margin-bottom: 8px;">
+        <label>Library <span style="font-weight:normal;color:#555">(&#9679; synced &nbsp; &#9675; pending)</span></label>
+        <select id="album-list" multiple>
+          {% for a in albums %}
+          <option value="{{ loop.index0 }}">
+            {% if (a.artist + ' — ' + a.album) in synced %}●{% else %}○{% endif %}
+            {{ a.artist }} — {{ a.album }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Add album -->
+      <fieldset style="margin-bottom: 8px;">
+        <legend>Add album</legend>
+        <div class="add-row">
+          <div class="field-group">
+            <label for="input-artist">Artist</label>
+            <input id="input-artist" type="text" placeholder="Portishead">
+          </div>
+          <div class="field-group">
+            <label for="input-album">Album</label>
+            <input id="input-album" type="text" placeholder="Dummy">
+          </div>
+          <button id="btn-add" style="flex-shrink:0">Add</button>
+        </div>
+      </fieldset>
+
+      <!-- Actions -->
+      <div class="toolbar" style="margin-bottom: 8px;">
+        <button id="btn-remove" disabled>Remove selected</button>
+        <div style="flex:1"></div>
+        <button id="btn-sync">&#9654; Sync now</button>
+      </div>
+
+      <!-- Sync log -->
+      <div class="field-row-stacked">
+        <label>Sync log</label>
+        <div id="sync-log"></div>
+      </div>
+
+    </div><!-- window-body -->
+
+    <div class="status-bar">
+      <p class="status-bar-field" id="status-text">
+        {{ albums | length }} album(s) in library
+      </p>
+      <p class="status-bar-field">port 6969 · port 6970</p>
+    </div>
+
+  </div><!-- window -->
+
+</div><!-- desktop -->
+
+<script>
+  const albumList  = document.getElementById('album-list');
+  const btnAdd     = document.getElementById('btn-add');
+  const btnRemove  = document.getElementById('btn-remove');
+  const btnSync    = document.getElementById('btn-sync');
+  const syncLog    = document.getElementById('sync-log');
+  const statusText = document.getElementById('status-text');
+
+  // Enable remove button when something is selected
+  albumList.addEventListener('change', () => {
+    btnRemove.disabled = albumList.selectedOptions.length === 0;
+  });
+
+  // Add album
+  btnAdd.addEventListener('click', async () => {
+    const artist = document.getElementById('input-artist').value.trim();
+    const album  = document.getElementById('input-album').value.trim();
+    if (!artist || !album) return;
+
+    const res = await fetch('/api/albums', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({artist, album}),
+    });
+    if (res.ok) {
+      document.getElementById('input-artist').value = '';
+      document.getElementById('input-album').value = '';
+      location.reload();
+    }
+  });
+
+  // Allow Enter key in inputs
+  ['input-artist', 'input-album'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter') btnAdd.click();
+    });
+  });
+
+  // Remove selected album
+  btnRemove.addEventListener('click', async () => {
+    const selected = [...albumList.selectedOptions];
+    // Remove in reverse index order so indices don't shift
+    const indices = selected.map(o => parseInt(o.value)).sort((a, b) => b - a);
+    for (const index of indices) {
+      await fetch(`/api/albums/${index}`, {method: 'DELETE'});
+    }
+    location.reload();
+  });
+
+  // Sync — POST to start, then open SSE stream for log
+  btnSync.addEventListener('click', async () => {
+    btnSync.disabled = true;
+    syncLog.textContent = '';
+    statusText.textContent = 'Syncing…';
+
+    const startRes = await fetch('/api/sync', {method: 'POST'});
+    if (!startRes.ok) {
+      const data = await startRes.json();
+      if (data.status === 'already running') {
+        log('sync already in progress');
+      }
+    }
+
+    const evtSource = new EventSource('/api/sync/stream');
+    evtSource.onmessage = (e) => {
+      if (e.data === '[done]') {
+        evtSource.close();
+        btnSync.disabled = false;
+        statusText.textContent = 'Sync complete — reload to refresh library status';
+        return;
+      }
+      log(e.data);
+    };
+    evtSource.onerror = () => {
+      evtSource.close();
+      btnSync.disabled = false;
+    };
+  });
+
+  function log(line) {
+    syncLog.textContent += line + '\n';
+    syncLog.scrollTop = syncLog.scrollHeight;
+  }
+
+  // On load, if a sync is already running, attach to its stream
+  (async () => {
+    const res = await fetch('/api/sync/status');
+    const data = await res.json();
+    if (data.running) {
+      data.log.forEach(l => log(l));
+      btnSync.disabled = true;
+      statusText.textContent = 'Sync in progress…';
+      const evtSource = new EventSource('/api/sync/stream');
+      evtSource.onmessage = (e) => {
+        if (e.data === '[done]') { evtSource.close(); btnSync.disabled = false; return; }
+        log(e.data);
+      };
+    }
+  })();
+</script>
+</body>
+</html>
