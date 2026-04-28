@@ -1,23 +1,46 @@
 """
 proxy.py — audio stream proxy (port 6969)
-GET /stream/{video_id}[/any-title.ext] → yt-dlp resolve → 302 to YouTube CDN audio URL
-The optional title suffix is ignored server-side; it exists so Audacious can parse
-a human-readable track name from the URL when #EXTINF metadata is not honoured.
-Results cached in-process for 1 hour so replaying a track doesn't re-invoke yt-dlp.
+GET /stream/{video_id}[/Artist%20-%20Title] → streams audio from YouTube CDN
+
+Instead of redirecting, we stream the bytes through so we can:
+  - set icy-name to the URL-decoded display title, giving Audacious the
+    correct "Artist - Title" string without it needing to probe external URLs
+  - respond to HEAD requests instantly (headers only, no body download)
+    so Audacious populates track durations without freezing on startup
+
+Range requests are forwarded so seeking works normally.
+yt-dlp CDN URL resolution is cached in-process for 1 hour.
 """
 
+import asyncio
 import subprocess
 import time
+from contextlib import asynccontextmanager
 from threading import Lock
+from urllib.parse import unquote
 
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse, PlainTextResponse
-
-app = FastAPI(docs_url=None, redoc_url=None)
+import httpx
+from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 
 CACHE_TTL = 3600
 _cache: dict[str, tuple[str, float]] = {}
 _lock = Lock()
+_http_client: httpx.AsyncClient | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _http_client
+    _http_client = httpx.AsyncClient(
+        follow_redirects=True,
+        timeout=httpx.Timeout(30.0, connect=10.0),
+    )
+    yield
+    await _http_client.aclose()
+
+
+app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
 
 
 def _resolve(video_id: str) -> str | None:
@@ -46,11 +69,44 @@ def _resolve(video_id: str) -> str | None:
     return None
 
 
-@app.get("/stream/{path:path}")
-def stream(path: str):
-    # path is "video_id" or "video_id/Artist - Title.opus" — only the first segment matters
+@app.api_route("/stream/{path:path}", methods=["GET", "HEAD"])
+async def stream(path: str, request: Request):
+    # path is "video_id" or "video_id/Artist%20-%20Title"
     video_id = path.split("/")[0]
-    url = _resolve(video_id)
-    if url:
-        return RedirectResponse(url, status_code=302)
-    return PlainTextResponse("yt-dlp could not resolve this video", status_code=502)
+    parts = path.split("/", 1)
+    title = unquote(parts[1]) if len(parts) > 1 else video_id
+
+    cdn_url = await asyncio.to_thread(_resolve, video_id)
+    if not cdn_url:
+        return PlainTextResponse("yt-dlp could not resolve this video", status_code=502)
+
+    upstream_headers = {}
+    if range_header := request.headers.get("range"):
+        upstream_headers["Range"] = range_header
+
+    upstream = await _http_client.send(
+        _http_client.build_request(request.method, cdn_url, headers=upstream_headers),
+        stream=True,
+    )
+
+    response_headers = {"icy-name": title, "Accept-Ranges": "bytes"}
+    for h in ("content-type", "content-length", "content-range"):
+        if h in upstream.headers:
+            response_headers[h] = upstream.headers[h]
+
+    if request.method == "HEAD":
+        await upstream.aclose()
+        return Response(headers=response_headers, status_code=upstream.status_code)
+
+    async def generate():
+        try:
+            async for chunk in upstream.aiter_bytes(65536):
+                yield chunk
+        finally:
+            await upstream.aclose()
+
+    return StreamingResponse(
+        generate(),
+        status_code=upstream.status_code,
+        headers=response_headers,
+    )

@@ -6,6 +6,7 @@ Called from the web UI; yields log lines so the UI can stream progress.
 import re
 from pathlib import Path
 from typing import Generator
+from urllib.parse import quote
 
 from ytmusicapi import YTMusic
 
@@ -13,6 +14,7 @@ from config import MUSIC_DIR, PROXY_BASE
 
 
 def _slugify(name: str) -> str:
+    """Used only for .m3u filenames — not for URL path components."""
     name = name.replace("/", "-").replace("\\", "-")
     name = re.sub(r'[<>:"|?*]', "", name)
     name = name.replace(" ", "-")
@@ -83,8 +85,8 @@ def sync_albums(albums: list[dict]) -> Generator[str, None, None]:
             duration = track.get("duration_seconds") or 0
             track_artist = (track.get("artists") or [{}])[0].get("name", canonical_artist)
             lines.append(f"#EXTINF:{duration},{track_artist} - {title}")
-            slug = _slugify(f"{track_artist} - {title}")
-            lines.append(f"{PROXY_BASE}/{video_id}/{slug}")
+            display_title = f"{track_artist} - {title}"
+            lines.append(f"{PROXY_BASE}/{video_id}/{quote(display_title, safe='')}")
 
         m3u_path.write_text("\n".join(lines) + "\n")
         track_count = len([l for l in lines if not l.startswith("#")])

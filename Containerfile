@@ -9,7 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         jinja2 \
         pyyaml \
         ytmusicapi \
-        yt-dlp
+        yt-dlp \
+        httpx
 
 RUN useradd -m app
 USER app
