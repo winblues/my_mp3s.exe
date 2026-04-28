@@ -3,13 +3,13 @@
 ## What This Project Is
 
 `my_mp3s.exe` is a YouTube Music → local file browser bridge for
-[Blue95](https://github.com/winblues/blue95). It recreates the late-90s workflow of
+[Blue95](https://github.com/winblues/blue95). It recreates the pre-streaming workflow of
 browsing a `~/Music/` folder and dragging an `.m3u` file into Winamp
 (here: Audacious with the Chicago95 Winamp skin).
 
 The name is intentionally chaotic.
 
-**Everything runs inside a single container.** The user installs one Quadlet file,
+Everything runs inside a single container. The user installs one Quadlet file,
 which mounts their `~/Music` and `~/.local/share/my_mp3s.exe` directories into the
 container, and gets:
 
