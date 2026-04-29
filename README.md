@@ -41,3 +41,5 @@ Save it as `~/.config/containers/systemd/my_mp3s.container` and start it with `s
 systemctl --user daemon-reload
 systemctl --user start my_mp3s
 ```
+
+Then, access the web UI at http://localhost:6970
